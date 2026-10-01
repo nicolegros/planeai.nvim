@@ -48,6 +48,10 @@ test("serializes selected-code feedback with bounded context labels", function()
   assert(text:find("Comment: Use clearer names."))
 end)
 
+-- Mirrors the recommended `<Cmd>` mapping, which runs without leaving visual mode.
+vim.keymap.set("x", "<F12>", "<Cmd>PlaneAIAddFeedback<CR>")
+
+-- Keys must end with <F12> (mapping) or <Esc> (command-line usage, where '< and '> are already set).
 local function select_and_add(keys)
   vim.g.planeai_session_id = "session-1"
   local original_input = vim.ui.input
@@ -59,8 +63,11 @@ local function select_and_add(keys)
   vim.api.nvim_buf_set_name(buf, vim.fn.getcwd() .. "/example-" .. buf .. ".lua")
   vim.bo[buf].filetype = "lua"
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "-- before", "local value = 1", "local other = 2", "-- after" })
-  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys .. "<Esc>", true, false, true), "x", false)
-  vim.cmd("PlaneAIAddFeedback")
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys, true, false, true), "x", false)
+  if keys:match("<Esc>$") then
+    vim.cmd("PlaneAIAddFeedback")
+  end
+  eq(vim.fn.mode(), "n")
   vim.ui.input = original_input
   eq(planeai.pending_count(), 1)
 
@@ -87,19 +94,27 @@ local function assert_whole_lines(text)
 end
 
 test("captures whole lines from a characterwise visual selection", function()
-  assert_whole_lines(select_and_add("2Gwvjb"))
+  assert_whole_lines(select_and_add("2Gwvjb<F12>"))
 end)
 
 test("captures the last line when a characterwise selection ends at its first column", function()
-  assert_whole_lines(select_and_add("2G$vj0"))
+  assert_whole_lines(select_and_add("2G$vj0<F12>"))
 end)
 
 test("captures whole lines from a blockwise visual selection", function()
-  assert_whole_lines(select_and_add("2Gw<C-v>jl"))
+  assert_whole_lines(select_and_add("2Gw<C-v>jl<F12>"))
 end)
 
 test("captures whole lines from a linewise visual selection", function()
-  assert_whole_lines(select_and_add("2GVj"))
+  assert_whole_lines(select_and_add("2GVj<F12>"))
+end)
+
+test("captures the current selection from a mapping instead of the previous one", function()
+  assert_whole_lines(select_and_add("4GV<Esc>2GVj<F12>"))
+end)
+
+test("captures the last selection when run from the command line", function()
+  assert_whole_lines(select_and_add("2GVj<Esc>"))
 end)
 
 test("rejects a selection of a single empty line", function()

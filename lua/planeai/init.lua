@@ -62,15 +62,8 @@ local function context_lines(bufnr, first, last, max_bytes)
   return table.concat(output, "\n")
 end
 
-local function capture_visual(mode)
-  mode = mode or vim.fn.visualmode()
-  if mode == "\22" then
-    return nil, "Blockwise visual selections are not supported."
-  end
-  if mode ~= "v" and mode ~= "V" then
-    return nil, "Select text in characterwise or linewise visual mode first."
-  end
-
+-- Every visual mode captures whole lines so feedback always maps to a line range.
+local function capture_visual()
   local start_pos = vim.fn.getpos("'<")
   local end_pos = vim.fn.getpos("'>")
   local start_line, end_line = start_pos[2], end_pos[2]
@@ -78,7 +71,7 @@ local function capture_visual(mode)
     return nil, "Select text in visual mode first."
   end
 
-  local lines = vim.fn.getregion(start_pos, end_pos, { type = mode })
+  local lines = vim.fn.getregion(start_pos, end_pos, { type = "V" })
   local selected_text = table.concat(lines, "\n")
   if selected_text == "" then
     return nil, "Select text before adding PlaneAI feedback."

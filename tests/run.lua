@@ -7,10 +7,13 @@ local failed = 0
 
 local function test(name, fn)
   planeai._reset_for_tests()
+  local original_notify = vim.notify
+  vim.notify = function() end
   local ok, err = xpcall(fn, debug.traceback)
+  vim.notify = original_notify
   if ok then
     passed = passed + 1
-    print("ok - " .. name)
+    io.stdout:write("ok - " .. name .. "\n")
   else
     failed = failed + 1
     io.stderr:write("not ok - " .. name .. "\n" .. err .. "\n")
@@ -45,28 +48,68 @@ test("serializes selected-code feedback with bounded context labels", function()
   assert(text:find("Comment: Use clearer names."))
 end)
 
-test("captures a characterwise visual selection and nearby context", function()
+local function select_and_add(keys)
+  vim.g.planeai_session_id = "session-1"
+  local original_input = vim.ui.input
+  vim.ui.input = function(_, callback)
+    callback("Review this.")
+  end
   vim.cmd("enew!")
   local buf = vim.api.nvim_get_current_buf()
-  vim.api.nvim_buf_set_name(buf, vim.fn.getcwd() .. "/example.lua")
+  vim.api.nvim_buf_set_name(buf, vim.fn.getcwd() .. "/example-" .. buf .. ".lua")
   vim.bo[buf].filetype = "lua"
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "-- before", "local value = 1", "-- after" })
-  vim.fn.setpos("'<", { 0, 2, 1, 0 })
-  vim.fn.setpos("'>", { 0, 2, 15, 0 })
-  local feedback, err = planeai._capture_visual("v")
-  assert(not err, err)
-  eq(feedback.start_line, 2)
-  eq(feedback.end_line, 2)
-  eq(feedback.selected_text, "local value = 1")
-  eq(feedback.context_before, "-- before")
-  eq(feedback.context_after, "-- after")
-  eq(feedback.language, "lua")
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "-- before", "local value = 1", "local other = 2", "-- after" })
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes(keys .. "<Esc>", true, false, true), "x", false)
+  vim.cmd("PlaneAIAddFeedback")
+  vim.ui.input = original_input
+  eq(planeai.pending_count(), 1)
+
+  planeai.setup({ cli_path = "true" })
+  local original_system = vim.system
+  local sent
+  vim.system = function(cmd, _, on_exit)
+    sent = cmd[5]
+    on_exit({ code = 0, stdout = "", stderr = "" })
+  end
+  planeai.send_feedback()
+  vim.system = original_system
+  vim.wait(1000, function()
+    return planeai.pending_count() == 0
+  end)
+  return sent
+end
+
+local function assert_whole_lines(text)
+  assert(text:find("lines 2%-3"), text)
+  assert(text:find("Selected code:\n```lua\nlocal value = 1\nlocal other = 2\n```"), text)
+  assert(text:find("Context before selection:\n```lua\n%-%- before\n```"), text)
+  assert(text:find("Context after selection:\n```lua\n%-%- after\n```"), text)
+end
+
+test("captures whole lines from a characterwise visual selection", function()
+  assert_whole_lines(select_and_add("2Gwvjb"))
 end)
 
-test("rejects blockwise visual selections", function()
-  local feedback, err = planeai._capture_visual("\22")
+test("captures the last line when a characterwise selection ends at its first column", function()
+  assert_whole_lines(select_and_add("2G$vj0"))
+end)
+
+test("captures whole lines from a blockwise visual selection", function()
+  assert_whole_lines(select_and_add("2Gw<C-v>jl"))
+end)
+
+test("captures whole lines from a linewise visual selection", function()
+  assert_whole_lines(select_and_add("2GVj"))
+end)
+
+test("rejects a selection of a single empty line", function()
+  vim.cmd("enew!")
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "x", "", "y" })
+  vim.fn.setpos("'<", { 0, 2, 1, 0 })
+  vim.fn.setpos("'>", { 0, 2, 1, 0 })
+  local feedback, err = planeai._capture_visual()
   eq(feedback, nil)
-  eq(err, "Blockwise visual selections are not supported.")
+  eq(err, "Select text before adding PlaneAI feedback.")
 end)
 
 test("retains queued feedback when the CLI cannot be found", function()
@@ -96,5 +139,5 @@ test("retains queued feedback when the CLI cannot be found", function()
 end)
 
 vim.g.planeai_session_id = nil
-print(string.format("%d passed, %d failed", passed, failed))
+io.stdout:write(string.format("%d passed, %d failed\n", passed, failed))
 vim.cmd(failed == 0 and "cq 0" or "cq 1")

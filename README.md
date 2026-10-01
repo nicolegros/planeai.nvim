@@ -43,7 +43,7 @@ PlaneAI uses its Neovim preset to provide `g:planeai_session_id`. For custom edi
 
 ## Commands
 
-- `:PlaneAIAddFeedback` — in characterwise or linewise visual mode, prompt for a comment and queue the selected code.
+- `:PlaneAIAddFeedback` - in any visual mode, prompt for a comment and queue the selected lines. Characterwise and blockwise selections are expanded to whole lines.
 - `:PlaneAIFeedback` — inspect queued feedback and edit or remove an item.
 - `:PlaneAISendFeedback` — asynchronously send all queued feedback to PlaneAI.
 - `:PlaneAIClearFeedback` — discard all queued feedback.

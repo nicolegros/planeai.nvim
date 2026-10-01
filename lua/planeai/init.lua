@@ -64,6 +64,11 @@ end
 
 -- Every visual mode captures whole lines so feedback always maps to a line range.
 local function capture_visual()
+  -- <Cmd> mappings run without leaving visual mode, so '< and '> still hold the previous selection.
+  if vim.fn.mode():match("^[vV\22]") then
+    vim.cmd("normal! \27")
+  end
+
   local start_pos = vim.fn.getpos("'<")
   local end_pos = vim.fn.getpos("'>")
   local start_line, end_line = start_pos[2], end_pos[2]
